@@ -1,4 +1,3 @@
-import React from "react";
 import star from "@/assets/star.png";
 
 const StarEntry = ({ name }: { name: string }) => {

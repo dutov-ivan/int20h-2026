@@ -1,4 +1,3 @@
-import React from "react";
 import "./index.css";
 import Heading from "./components/ui/heading";
 
@@ -187,7 +186,7 @@ const App = () => {
       </div>
 
       <div>
-        <Heading></Heading>
+        <Heading>Галерея</Heading>
       </div>
     </div>
   );
