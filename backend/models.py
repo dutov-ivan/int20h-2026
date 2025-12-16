@@ -50,7 +50,7 @@ def normalize_phone_number(number: str) -> str:
     except phonenumbers.NumberParseException as e:
         raise ValueError(f"Invalid phone number: {e}")
 
-    if not phonenumbers.is_valid_number(parsed_number):
+    if not phonenumbers.is_possible_number(parsed_number):
         raise ValueError("Invalid phone number")
     return phonenumbers.format_number(
         parsed_number, phonenumbers.PhoneNumberFormat.E164

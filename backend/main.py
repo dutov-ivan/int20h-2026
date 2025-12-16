@@ -126,4 +126,4 @@ async def upload_cv_file(cv_file: UploadFile) -> str:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"File upload failed: {e}")
     finally:
-        await cv_file.file.close()
+        cv_file.file.close()

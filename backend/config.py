@@ -1,12 +1,20 @@
 from sqlmodel import SQLModel, create_engine, Session
 from typing import Generator
+import os
 
-# Postgres Connection String
-# Format: postgresql://<username>:<password>@<host>:<port>/<db_name>
-DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/int20h_db"
+POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "int20h_db")
+
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}",
+)
 
 # create_engine handles the connection pool
-engine = create_engine(DATABASE_URL, echo=True)  # echo=True logs SQL for debugging
+engine = create_engine(DATABASE_URL, echo=True)
 
 
 def create_db_and_tables():
