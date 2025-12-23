@@ -220,8 +220,34 @@ async def from_group_topic(message: Message):
 
 
 async def main():
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        logging.info("Shutting down: stopping dispatcher and closing bot session")
+        # Attempt to gracefully shutdown the dispatcher (if available)
+        try:
+            await dp.shutdown()
+        except Exception:
+            pass
+
+        # Close the bot's HTTP session / client
+        try:
+            # aiogram Bot exposes either `session` or a `close()` coroutine
+            if hasattr(bot, "session") and bot.session is not None:
+                await bot.session.close()
+            else:
+                await bot.close()
+        except Exception:
+            try:
+                await bot.close()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logging.info("Interrupted by user, exiting")
+    except Exception:
+        logging.exception("Unhandled exception during runtime")
