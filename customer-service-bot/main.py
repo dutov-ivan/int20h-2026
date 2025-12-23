@@ -224,6 +224,67 @@ async def from_group_topic(message: Message):
     )
 
 
+# Handle edited messages from users in private chats: notify support thread
+@dp.edited_message(F.chat.type == ChatType.PRIVATE)
+async def user_message_edited(message: Message):
+    if not message.from_user:
+        return
+    user_id = message.from_user.id
+
+    # Find conversation mapping
+    conv = await conv_repo.get_by_user(user_id)
+    if not conv:
+        return
+
+    # Find the linked group message for this user message
+    group_msg_id = await msg_repo.get_group_id(user_id, message.message_id)
+    if group_msg_id is None:
+        return
+
+    # Build update notice
+    new_text = _get_text_from_message(message)
+    update_text = f"<b>UPDATE</b>\n\n{new_text}"
+
+    try:
+        await bot.send_message(
+            chat_id=conv.forum_chat_id,
+            message_thread_id=conv.thread_id,
+            text=update_text,
+            reply_to_message_id=group_msg_id,
+        )
+    except Exception:
+        logging.exception("Failed to send update notice to support thread")
+
+
+# Handle edited messages in the forum topic: notify the user
+@dp.edited_message(F.chat.id == FORUM_GROUP_ID, F.message_thread_id.is_not(None))
+async def group_message_edited(message: Message):
+    # Resolve conversation -> user
+    conv = await conv_repo.get_by_thread(message.chat.id, message.message_thread_id)
+    if not conv:
+        return
+    user_id = conv.user_id
+
+    # Prevent bot edits being forwarded
+    if message.from_user and message.from_user.is_bot:
+        return
+
+    # Find the linked user message id for this group message
+    user_msg_id = await msg_repo.get_user_id_by_group(
+        message.chat.id, message.message_thread_id, message.message_id
+    )
+    if user_msg_id is None:
+        return
+
+    new_text = _get_text_from_message(message)
+    update_text = f"<b>UPDATE</b>\n\n{new_text}"
+
+    try:
+        await bot.send_message(chat_id=user_id, text=update_text, reply_to_message_id=user_msg_id)
+    except Exception:
+        logging.exception("Failed to send update notice to user")
+
+
 async def main():
     # Initialize DB and repositories
     global conv_repo, msg_repo, session_factory
