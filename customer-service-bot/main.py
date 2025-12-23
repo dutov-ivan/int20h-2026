@@ -4,7 +4,7 @@ import logging
 from typing import Dict, Tuple, Optional
 
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message
+from aiogram.types import Message, ReplyParameters, TextQuote
 from aiogram.enums import ChatType
 from aiogram.client.default import DefaultBotProperties
 
@@ -48,6 +48,54 @@ def _get_text_from_message(message: Message) -> str:
     return message.text or message.caption or ""
 
 
+def _extract_quoted_message_id(message: Message) -> Optional[int]:
+    # Prefer explicit reply_to_message
+    if message.reply_to_message:
+        return message.reply_to_message.message_id
+
+    # Try to find t.me links or message id in text/caption
+    import re
+
+    text_src = message.text or message.caption or ""
+    # match /<digits> at end or ?message= or &m=
+    m = re.search(r"/(\d+)(?:$|\D)", text_src)
+    if m:
+        try:
+            return int(m.group(1))
+        except Exception:
+            pass
+    m = re.search(r"[?&](?:message|msg|m)=(\d+)", text_src)
+    if m:
+        try:
+            return int(m.group(1))
+        except Exception:
+            pass
+    return None
+
+
+def map_quote_to_reply_parameters(
+    quote: Optional[TextQuote],
+    target_message_id: int,
+    target_chat_id: Optional[int | str] = None,
+) -> ReplyParameters:
+    # Build and return an immutable ReplyParameters instance
+    kwargs: dict = {"message_id": int(target_message_id)}
+    if target_chat_id is not None:
+        kwargs["chat_id"] = target_chat_id
+
+    if quote:
+        qtext = quote.text or ""
+        if len(qtext) > 1024:
+            qtext = qtext[:1024]
+        kwargs["quote"] = qtext
+        if quote.entities:
+            kwargs["quote_entities"] = quote.entities
+        if quote.position is not None:
+            kwargs["quote_position"] = quote.position
+
+    return ReplyParameters(**kwargs)
+
+
 @dp.message(F.chat.type == ChatType.PRIVATE)
 async def from_user(message: Message):
     user_id = message.from_user.id
@@ -66,21 +114,48 @@ async def from_user(message: Message):
     else:
         thread_id = user_to_topic[user_id]
 
-    # Determine if the user replied to one of our messages and map reply target
+    # Determine if the user replied or quoted and map reply target
     reply_to_group_id: Optional[int] = None
-    if getattr(message, "reply_to_message", None):
+    if message.reply_to_message:
         replied_id = message.reply_to_message.message_id
         reply_to_group_id = user_to_group_msg.get((user_id, replied_id))
+    else:
+        # try to extract quoted message id from text/caption
+        quoted = _extract_quoted_message_id(message)
+        if quoted is not None:
+            mapped = user_to_group_msg.get((user_id, quoted))
+            reply_to_group_id = mapped if mapped is not None else quoted
 
-    text = _get_text_from_message(message)
+    # Prepare optional ReplyParameters only when we have a target message id
+    reply_parameters = None
+    if reply_to_group_id is not None:
+        reply_parameters = map_quote_to_reply_parameters(
+            message.quote, target_message_id=reply_to_group_id
+        )
+    else:
+        # If there's a quote but no known target, log it and include the quote text in the forwarded message
+        if message.quote:
+            logging.info(
+                "User sent a quote without resolvable target: %s", message.quote.text
+            )
+            if message.reply_to_message:
+                logging.info(
+                    "Quoted original message text: %s",
+                    _get_text_from_message(message.reply_to_message),
+                )
 
-    # Send text-only messages and preserve reply mapping
-    sent = await bot.send_message(
+    # Copy the incoming message (text, media, files) into the forum topic thread
+    copy_kwargs = dict(
         chat_id=FORUM_GROUP_ID,
         message_thread_id=thread_id,
-        text=text,
+        from_chat_id=message.chat.id,
+        message_id=message.message_id,
         reply_to_message_id=reply_to_group_id,
     )
+    if reply_parameters is not None:
+        copy_kwargs["reply_parameters"] = reply_parameters
+
+    sent = await bot.copy_message(**copy_kwargs)
 
     # Save mapping so future replies from support can reference the original user message
     group_to_user_msg[(thread_id, sent.message_id)] = message.message_id
@@ -101,17 +176,43 @@ async def from_group_topic(message: Message):
     if message.from_user and message.from_user.is_bot:
         return
 
-    # Determine if the support reply references an earlier group message
+    # Determine if the support reply references an earlier group message or quoted link
     reply_to_user_msg_id: Optional[int] = None
-    if getattr(message, "reply_to_message", None):
+    if message.reply_to_message:
         replied_group_id = message.reply_to_message.message_id
         reply_to_user_msg_id = group_to_user_msg.get((thread_id, replied_group_id))
+    else:
+        quoted = _extract_quoted_message_id(message)
+        if quoted is not None:
+            reply_to_user_msg_id = group_to_user_msg.get((thread_id, quoted))
 
-    text = _get_text_from_message(message)
+    # Prepare ReplyParameters only when we have a target message id
+    reply_parameters = None
+    if reply_to_user_msg_id is not None:
+        reply_parameters = map_quote_to_reply_parameters(
+            message.quote, target_message_id=reply_to_user_msg_id
+        )
+    else:
+        if message.quote:
+            logging.info(
+                "Support sent a quote without resolvable target: %s", message.quote.text
+            )
+            if message.reply_to_message:
+                logging.info(
+                    "Quoted original group message text: %s",
+                    _get_text_from_message(message.reply_to_message),
+                )
 
-    sent = await bot.send_message(
-        chat_id=user_id, text=text, reply_to_message_id=reply_to_user_msg_id
+    copy_kwargs = dict(
+        chat_id=user_id,
+        from_chat_id=message.chat.id,
+        message_id=message.message_id,
+        reply_to_message_id=reply_to_user_msg_id,
     )
+    if reply_parameters is not None:
+        copy_kwargs["reply_parameters"] = reply_parameters
+
+    sent = await bot.copy_message(**copy_kwargs)
 
     # Save mapping so if the user replies to this private message, we can reply into the forum thread
     group_to_user_msg[(thread_id, message.message_id)] = sent.message_id
