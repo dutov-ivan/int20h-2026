@@ -31,17 +31,10 @@ except Exception:
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
-# In-memory mappings
-# user_id -> thread_id
-user_to_topic: Dict[int, int] = {}
-# thread_id -> user_id
-topic_to_user: Dict[int, int] = {}
-
-# Message reply mappings to preserve reply context
-# (thread_id, group_message_id) -> user_message_id
-group_to_user_msg: Dict[Tuple[int, int], int] = {}
-# (user_id, user_message_id) -> group_message_id
-user_to_group_msg: Dict[Tuple[int, int], int] = {}
+# Repositories (set up in main)
+conv_repo = None
+msg_repo = None
+session_factory = None
 
 
 def _get_text_from_message(message: Message) -> str:
@@ -99,9 +92,9 @@ def map_quote_to_reply_parameters(
 @dp.message(F.chat.type == ChatType.PRIVATE)
 async def from_user(message: Message):
     user_id = message.from_user.id
-
-    # Create topic if not exists; use full name + id as title
-    if user_id not in user_to_topic:
+    # Create or find conversation (persisted)
+    conv = await conv_repo.get_by_user(user_id)
+    if not conv:
         full_name = (
             message.from_user.full_name or message.from_user.username or f"{user_id}"
         )
@@ -109,21 +102,21 @@ async def from_user(message: Message):
             chat_id=FORUM_GROUP_ID, name=f"{full_name} {user_id}"
         )
         thread_id = topic.message_thread_id
-        user_to_topic[user_id] = thread_id
-        topic_to_user[thread_id] = user_id
+        # persist mapping
+        await conv_repo.create(user_id, FORUM_GROUP_ID, thread_id)
     else:
-        thread_id = user_to_topic[user_id]
+        thread_id = conv.thread_id
 
     # Determine if the user replied or quoted and map reply target
     reply_to_group_id: Optional[int] = None
     if message.reply_to_message:
         replied_id = message.reply_to_message.message_id
-        reply_to_group_id = user_to_group_msg.get((user_id, replied_id))
+        reply_to_group_id = await msg_repo.get_group_id(user_id, replied_id)
     else:
         # try to extract quoted message id from text/caption
         quoted = _extract_quoted_message_id(message)
         if quoted is not None:
-            mapped = user_to_group_msg.get((user_id, quoted))
+            mapped = await msg_repo.get_group_id(user_id, quoted)
             reply_to_group_id = mapped if mapped is not None else quoted
 
     # Prepare optional ReplyParameters only when we have a target message id
@@ -156,21 +149,25 @@ async def from_user(message: Message):
         copy_kwargs["reply_parameters"] = reply_parameters
 
     sent = await bot.copy_message(**copy_kwargs)
-
-    # Save mapping so future replies from support can reference the original user message
-    group_to_user_msg[(thread_id, sent.message_id)] = message.message_id
-    user_to_group_msg[(user_id, message.message_id)] = sent.message_id
+    # Persist mapping for this copied message pair
+    await msg_repo.link(
+        user_id=user_id,
+        forum_chat_id=FORUM_GROUP_ID,
+        thread_id=thread_id,
+        user_message_id=message.message_id,
+        group_message_id=sent.message_id,
+    )
 
 
 @dp.message(F.chat.id == FORUM_GROUP_ID, F.message_thread_id.is_not(None))
 async def from_group_topic(message: Message):
     thread_id = message.message_thread_id
 
-    # Ignore messages not mapped to a user
-    if thread_id not in topic_to_user:
+    # Resolve conversation -> user
+    conv = await conv_repo.get_by_thread(message.chat.id, thread_id)
+    if not conv:
         return
-
-    user_id = topic_to_user[thread_id]
+    user_id = conv.user_id
 
     # Prevent echo loops (bot forwarding itself)
     if message.from_user and message.from_user.is_bot:
@@ -180,11 +177,15 @@ async def from_group_topic(message: Message):
     reply_to_user_msg_id: Optional[int] = None
     if message.reply_to_message:
         replied_group_id = message.reply_to_message.message_id
-        reply_to_user_msg_id = group_to_user_msg.get((thread_id, replied_group_id))
+        reply_to_user_msg_id = await msg_repo.get_user_id_by_group(
+            message.chat.id, thread_id, replied_group_id
+        )
     else:
         quoted = _extract_quoted_message_id(message)
         if quoted is not None:
-            reply_to_user_msg_id = group_to_user_msg.get((thread_id, quoted))
+            reply_to_user_msg_id = await msg_repo.get_user_id_by_group(
+                message.chat.id, thread_id, quoted
+            )
 
     # Prepare ReplyParameters only when we have a target message id
     reply_parameters = None
@@ -213,13 +214,30 @@ async def from_group_topic(message: Message):
         copy_kwargs["reply_parameters"] = reply_parameters
 
     sent = await bot.copy_message(**copy_kwargs)
-
-    # Save mapping so if the user replies to this private message, we can reply into the forum thread
-    group_to_user_msg[(thread_id, message.message_id)] = sent.message_id
-    user_to_group_msg[(user_id, sent.message_id)] = message.message_id
+    # Persist mapping for this copied message pair
+    await msg_repo.link(
+        user_id=user_id,
+        forum_chat_id=message.chat.id,
+        thread_id=thread_id,
+        user_message_id=sent.message_id,
+        group_message_id=message.message_id,
+    )
 
 
 async def main():
+    # Initialize DB and repositories
+    global conv_repo, msg_repo, session_factory
+    from db import make_engine, make_session_factory, init_db
+    from repos import ConversationRepo, MessageLinkRepo
+
+    DB_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./bot.db")
+    engine = make_engine(DB_URL)
+    session_factory = make_session_factory(engine)
+    await init_db(engine)
+
+    conv_repo = ConversationRepo(session_factory)
+    msg_repo = MessageLinkRepo(session_factory)
+
     try:
         await dp.start_polling(bot)
     finally:
