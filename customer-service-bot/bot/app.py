@@ -6,6 +6,9 @@ from aiogram.client.default import DefaultBotProperties
 
 from .config import Settings
 from .database import core as db_core
+from .handlers.forum import create_forum_router
+from .handlers.user import create_user_router
+from .database.requests import ConversationRepo, MessageLinkRepo
 
 logger = logging.getLogger(__name__)
 
@@ -25,18 +28,17 @@ async def run():
     session_factory = db_core.make_session_factory(engine)
     await db_core.init_db(engine)
 
-    # Repos now live in the package
-    from .database.requests import ConversationRepo, MessageLinkRepo
-
     conv_repo = ConversationRepo(session_factory)
     msg_repo = MessageLinkRepo(session_factory)
 
-    # Register handlers (deferred imports to avoid circulars)
-    from .handlers.user import register_user_handlers
-    from .handlers.forum import register_forum_handlers
+    forum_router = create_forum_router(settings.FORUM_GROUP_ID, conv_repo, msg_repo)
 
-    register_user_handlers(dp, bot, conv_repo, msg_repo, settings.FORUM_GROUP_ID)
-    register_forum_handlers(dp, bot, conv_repo, msg_repo, settings.FORUM_GROUP_ID)
+    user_router = create_user_router(settings.FORUM_GROUP_ID, conv_repo, msg_repo)
+
+    dp.include_router(forum_router)
+    dp.include_router(user_router)
+
+    await dp.start_polling(bot)
 
     logger.info("Starting bot polling")
     await dp.start_polling(bot)

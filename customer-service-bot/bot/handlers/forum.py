@@ -1,10 +1,8 @@
 from typing import Optional
-from aiogram import Bot, Dispatcher
 import logging
-from aiogram import F
+from aiogram import Bot, Router, F
 from aiogram.types import Message
 from ..database.requests import ConversationRepo, MessageLinkRepo
-
 from ..utils.text import (
     get_text_from_message,
     extract_quoted_message_id,
@@ -14,17 +12,34 @@ from ..utils.text import (
 logger = logging.getLogger(__name__)
 
 
-def register_forum_handlers(
-    dp: Dispatcher,
-    bot: Bot,
-    conv_repo: ConversationRepo,
-    msg_repo: MessageLinkRepo,
-    FORUM_GROUP_ID: int,
-):
-    @dp.message.register(F.chat.id == FORUM_GROUP_ID, F.message_thread_id.is_not(None))
-    async def from_group_topic(message: Message):
+def create_forum_router(
+    forum_group_id: int, conv_repo: ConversationRepo, msg_repo: MessageLinkRepo
+) -> Router:
+    """
+    Creates a Router configured specifically for the support forum group.
+    Dependencies are injected via closure (captured from arguments).
+    """
+    router = Router()
+
+    # Apply a filter to the ENTIRE router.
+    # Any handler attached to this router will only trigger if:
+    # 1. The chat ID matches the forum group
+    # 2. It is a topic thread (message_thread_id is not None)
+    router.message.filter(F.chat.id == forum_group_id, F.message_thread_id.is_not(None))
+    router.edited_message.filter(
+        F.chat.id == forum_group_id, F.message_thread_id.is_not(None)
+    )
+
+    # --- HANDLER 1: New Messages ---
+    # We don't need to ask for conv_repo/msg_repo in arguments;
+    # we use the ones passed to create_forum_router
+    @router.message()
+    async def from_group_topic(message: Message, bot: Bot):
         thread_id = message.message_thread_id
+
+        # Access 'conv_repo' from outer scope
         conv = await conv_repo.get_by_thread(message.chat.id, thread_id)
+
         if not conv:
             return
         user_id = conv.user_id
@@ -32,6 +47,8 @@ def register_forum_handlers(
             return
 
         reply_to_user_msg_id: Optional[int] = None
+
+        # Access 'msg_repo' from outer scope
         if message.reply_to_message:
             replied_group_id = message.reply_to_message.message_id
             reply_to_user_msg_id = await msg_repo.get_user_id_by_group(
@@ -71,6 +88,7 @@ def register_forum_handlers(
             copy_kwargs["reply_parameters"] = reply_parameters
 
         sent = await bot.copy_message(**copy_kwargs)
+
         await msg_repo.link(
             user_id=user_id,
             forum_chat_id=message.chat.id,
@@ -79,21 +97,25 @@ def register_forum_handlers(
             group_message_id=message.message_id,
         )
 
-    @dp.edited_message.register(
-        F.chat.id == FORUM_GROUP_ID, F.message_thread_id.is_not(None)
-    )
-    async def group_message_edited(message: Message):
+    # --- HANDLER 2: Edited Messages ---
+    @router.edited_message()
+    async def group_message_edited(message: Message, bot: Bot):
+        # Access 'conv_repo' from outer scope
         conv = await conv_repo.get_by_thread(message.chat.id, message.message_thread_id)
+
         if not conv:
             return
         user_id = conv.user_id
         if message.from_user and message.from_user.is_bot:
             return
+
+        # Access 'msg_repo' from outer scope
         user_msg_id = await msg_repo.get_user_id_by_group(
             message.chat.id, message.message_thread_id, message.message_id
         )
         if user_msg_id is None:
             return
+
         new_text = get_text_from_message(message)
         update_text = f"<b>UPDATE</b>\n\n{new_text}"
         try:
@@ -102,3 +124,5 @@ def register_forum_handlers(
             )
         except Exception:
             logging.exception("Failed to send update notice to user")
+
+    return router
