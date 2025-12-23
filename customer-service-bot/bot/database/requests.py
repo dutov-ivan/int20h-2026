@@ -1,11 +1,18 @@
+"""Repository implementations (migrated from top-level `repos.py`).
+
+This module provides async CRUD wrappers used by handlers and services.
+"""
+
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from models import Conversation, MessageLink
+from .models import Conversation, MessageLink
 
 
 class ConversationRepo:
-    def __init__(self, session_factory):
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]):
         self.session_factory = session_factory
 
     async def get_by_user(self, user_id: int):
@@ -36,7 +43,7 @@ class ConversationRepo:
 
 
 class MessageLinkRepo:
-    def __init__(self, session_factory):
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]):
         self.session_factory = session_factory
 
     async def link(

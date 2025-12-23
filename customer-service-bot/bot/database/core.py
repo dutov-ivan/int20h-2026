@@ -1,7 +1,12 @@
+"""Database core helpers: engine creation and session factory.
+
+This is adapted from the previous top-level `db.py`.
+"""
+
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from models import Base
+from .models import Base
 
 
 def make_engine(db_url: str) -> AsyncEngine:
