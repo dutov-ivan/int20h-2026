@@ -1,0 +1,15 @@
+# This file is made for local development and testing purposes.
+# It defines the services and their configurations needed to run the application using Docker Compose.
+
+services:
+  bot_database:
+    image: postgres:16
+    container_name: customer_service_bot_db
+    environment:
+      POSTGRES_USER: bot_user
+      POSTGRES_PASSWORD: bot_password
+      POSTGRES_DB: customer_service_bot_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - bot_db_data:/var/lib/postgresql/data
