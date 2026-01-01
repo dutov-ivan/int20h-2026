@@ -5,7 +5,7 @@ This module provides async CRUD wrappers used by handlers and services.
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.exc import IntegrityError
 
 from .models import Conversation, MessageLink
@@ -40,6 +40,19 @@ class ConversationRepo:
             except IntegrityError:
                 await s.rollback()
                 return await self.get_by_user(user_id)
+
+    async def delete_by_thread(self, forum_chat_id: int, thread_id: int):
+        async with self.session_factory() as s:
+            q = select(Conversation).where(
+                Conversation.forum_chat_id == forum_chat_id,
+                Conversation.thread_id == thread_id,
+            )
+            r = await s.execute(q)
+            conv = r.scalar_one_or_none()
+            if conv is None:
+                return
+            await s.delete(conv)
+            await s.commit()
 
 
 class MessageLinkRepo:
@@ -90,3 +103,12 @@ class MessageLinkRepo:
             r = await s.execute(q)
             res = r.scalar_one_or_none()
             return int(res) if res is not None else None
+
+    async def delete_by_thread(self, forum_chat_id: int, thread_id: int):
+        async with self.session_factory() as s:
+            q = delete(MessageLink).where(
+                MessageLink.forum_chat_id == forum_chat_id,
+                MessageLink.thread_id == thread_id,
+            )
+            await s.execute(q)
+            await s.commit()

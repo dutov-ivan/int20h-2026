@@ -30,9 +30,24 @@ def create_forum_router(
         F.chat.id == forum_group_id, F.message_thread_id.is_not(None)
     )
 
-    # --- HANDLER 1: New Messages ---
-    # We don't need to ask for conv_repo/msg_repo in arguments;
-    # we use the ones passed to create_forum_router
+    @router.message(F.forum_topic_closed.is_not(None))
+    async def forum_topic_closed(message: Message, bot: Bot):
+        thread_id = message.message_thread_id
+
+        conv = await conv_repo.get_by_thread(message.chat.id, thread_id)
+        if not conv:
+            return
+
+        # Remove DB rows
+        try:
+            await msg_repo.delete_by_thread(message.chat.id, thread_id)
+            await conv_repo.delete_by_thread(message.chat.id, thread_id)
+            logger.info("Cleaned up conversation and links for thread %s", thread_id)
+        except Exception:
+            logger.exception(
+                "Failed to remove DB records for closed thread %s", thread_id
+            )
+
     @router.message()
     async def from_group_topic(message: Message, bot: Bot):
         thread_id = message.message_thread_id
@@ -97,7 +112,6 @@ def create_forum_router(
             group_message_id=message.message_id,
         )
 
-    # --- HANDLER 2: Edited Messages ---
     @router.edited_message()
     async def group_message_edited(message: Message, bot: Bot):
         # Access 'conv_repo' from outer scope
