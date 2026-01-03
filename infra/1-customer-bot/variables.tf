@@ -28,3 +28,38 @@ variable "app_settings" {
   description = "Application settings to pass to the Web App"
   default     = {}
 }
+
+variable "BOT_TOKEN" {
+  type        = string
+  description = "Bot token for the customer bot"
+  sensitive   = true
+}
+
+variable "FORUM_GROUP_ID" {
+  type        = string
+  description = "Forum group ID for the customer bot"
+  sensitive = true
+}
+
+variable "DATABASE_URL" {
+  type        = string
+  description = "Database connection string"
+  sensitive   = true
+}
+
+variable "WEBHOOK_SECRET_TOKEN" {
+  type        = string
+  description = "Secret token to verify incoming webhooks"
+  sensitive   = true
+}
+
+variable "ENVIRONMENT" {
+  type        = string
+  description = "Environment the app is deployed in (staging/production)"
+}
+
+variable "WEBSITES_PORT" {
+  type        = string
+  description = "Port on which the app listens"
+  default     = "8000"
+}
