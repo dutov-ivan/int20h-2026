@@ -4,4 +4,4 @@ prefix              = "int20h"
 service_plan_sku_tier = "Basic"
 service_plan_sku_size = "B1"
 service_plan_sku_capacity = 1
-acr_name = "int20hacrprod"
+acr_name = "int20h2026acrprod"

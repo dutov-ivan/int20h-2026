@@ -6,16 +6,13 @@ on:
       - main
     paths:
       - customer-service-bot/**
-  pull_request:
-    paths:
-      - customer-service-bot/**
 
 permissions:
   contents: read
   id-token: write
 
 env:
-  ACR_LOGIN_SERVER: int20hacrprod.azurecr.io
+  ACR_LOGIN_SERVER: int20h2026acrprod.azurecr.io
   IMAGE_NAME: customer-service-bot
 
 jobs:
