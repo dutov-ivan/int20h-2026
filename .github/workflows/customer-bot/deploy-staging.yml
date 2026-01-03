@@ -1,0 +1,59 @@
+name: Deploy Staging
+
+on:
+  workflow_run:
+    workflows: ["Build Staging customer-service-bot"]
+    types: [completed]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-staging:
+    # 1. Run only if the build succeeded
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: staging
+    
+    # 2. THE QUEUE: Prevents two PRs from overwriting Staging at the same time
+    concurrency: 
+      group: staging-environment
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v1
+        with:
+          enable-oidc: true
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+
+      - uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+
+      - name: Terraform Init
+        working-directory: infra/1-customer-bot
+        # Note: Ensure you aren't using a backend-config key collision here!
+        # Ideally use a separate key like 'bot.staging.tfstate'
+        run: |
+          terraform init \
+            -backend-config="key=bot.staging.tfstate" \
+            -input=false
+
+      - name: Terraform Apply (Staging)
+        working-directory: infra/1-customer-bot
+        env:
+          # Load secrets into env vars for Terraform
+          TF_VAR_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TF_VAR_FORUM_GROUP_ID: ${{ secrets.FORUM_GROUP_ID }}
+          TF_VAR_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TF_VAR_WEBHOOK_SECRET_TOKEN: ${{ secrets.WEBHOOK_SECRET_TOKEN }}
+          TF_VAR_ENVIRONMENT: "production" # For staging, we still use "production" env for the bot
+        run: |
+          terraform apply -auto-approve \
+            -var="docker_image=customer-service-bot:${{ github.event.workflow_run.head_sha }}" \
+            -var-file=staging.tfvars

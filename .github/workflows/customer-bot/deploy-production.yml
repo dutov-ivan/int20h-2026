@@ -1,0 +1,50 @@
+name: Deploy Production
+
+on:
+  workflow_run:
+    workflows: ["Build Production customer-service-bot"]
+    types: [completed]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-prod:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production # Triggers Approval Gate
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v1
+        with:
+          enable-oidc: true
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+
+      - uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+
+      - name: Terraform Init
+        working-directory: infra/1-customer-bot
+        run: |
+          terraform init \
+            -backend-config="key=bot.prod.tfstate" \
+            -input=false
+
+      - name: Terraform Apply (Prod)
+        working-directory: infra/1-customer-bot
+        env:
+          TF_VAR_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TF_VAR_FORUM_GROUP_ID: ${{ secrets.FORUM_GROUP_ID }}
+          TF_VAR_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TF_VAR_WEBHOOK_SECRET_TOKEN: ${{ secrets.WEBHOOK_SECRET_TOKEN }}
+          TF_VAR_ENVIRONMENT: "production"
+        run: |
+          terraform apply -auto-approve \
+            -var="docker_image=customer-service-bot:${{ github.event.workflow_run.head_sha }}" \
+            -var-file=prod.tfvars

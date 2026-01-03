@@ -1,4 +1,4 @@
-name: Build customer-service-bot
+name: Build Staging customer-service-bot
 
 on:
   pull_request:

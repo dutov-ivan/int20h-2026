@@ -1,4 +1,4 @@
-name: Build customer-service-bot
+name: Build Production customer-service-bot
 
 on:
   push:
