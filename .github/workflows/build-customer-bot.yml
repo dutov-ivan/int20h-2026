@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths:
+      - customer-service-bot/**
   pull_request:
     paths:
       - customer-service-bot/**
