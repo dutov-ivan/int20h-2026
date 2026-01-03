@@ -1,0 +1,83 @@
+name: Deploy customer-service-bot
+
+on:
+  workflow_run:
+    workflows: ["Build customer-service-bot"]
+    types: [completed]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+  FORUM_GROUP_ID: ${{ secrets.FORUM_GROUP_ID }}
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+  WEBHOOK_SECRET_TOKEN: ${{ secrets.WEBHOOK_SECRET_TOKEN }}
+  ENVIRONMENT: "production"
+
+jobs:
+  deploy-staging:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v1
+        with:
+          enable-oidc: true
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+
+      - name: Terraform init
+        working-directory: infra/1-customer-bot
+        run: terraform init -input=false
+
+      - name: Terraform apply (staging)
+        working-directory: infra/1-customer-bot
+        run: |
+          terraform apply -auto-approve \
+            -var="BOT_TOKEN=$BOT_TOKEN" \
+            -var="DATABASE_URL=$DATABASE_URL" \
+            -var="WEBHOOK_SECRET_TOKEN=$WEBHOOK_SECRET_TOKEN" \
+            -var="ENVIRONMENT=$ENVIRONMENT" \
+            -var="docker_image=customer-service-bot:${{ github.event.workflow_run.head_sha }}" \
+            -var-file=staging.tfvars
+
+  deploy-prod:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v1
+        with:
+          enable-oidc: true
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v2
+
+      - name: Terraform init
+        working-directory: infra/1-customer-bot
+        run: terraform init -input=false
+
+      - name: Terraform apply (prod)
+        working-directory: infra/1-customer-bot
+        run: |
+          terraform apply -auto-approve \
+            -var="BOT_TOKEN=$BOT_TOKEN" \
+            -var="FORUM_GROUP_ID=$FORUM_GROUP_ID" \
+            -var="DATABASE_URL=$DATABASE_URL" \
+            -var="WEBHOOK_SECRET_TOKEN=$WEBHOOK_SECRET_TOKEN" \
+            -var="ENVIRONMENT=$ENVIRONMENT" \
+            -var="docker_image=customer-service-bot:${{ github.event.workflow_run.head_sha }}" \
+            -var-file=prod.tfvars

@@ -27,6 +27,12 @@ data "azurerm_container_registry" "acr" {
   resource_group_name = data.azurerm_resource_group.rg.name
 }
 
+resource "azurerm_role_assignment" "acr_pull" {
+  scope                = data.azurerm_container_registry.acr.id
+  role_definition_name = "AcrPull"
+  principal_id         = azurerm_linux_web_app.bot.identity[0].principal_id
+}
+
 resource "azurerm_linux_web_app" "bot" {
   name                = var.app_name
   location            = data.azurerm_resource_group.rg.location
@@ -41,8 +47,6 @@ resource "azurerm_linux_web_app" "bot" {
     application_stack {
       docker_image_name = "${var.docker_image}"
       docker_registry_url = "https://${data.azurerm_container_registry.acr.login_server}"
-      docker_registry_username = data.azurerm_container_registry.acr.admin_username
-      docker_registry_password = data.azurerm_container_registry.acr.admin_password
     }
   }
 
@@ -52,6 +56,13 @@ resource "azurerm_linux_web_app" "bot" {
       "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = "false"
       "SCM_DO_BUILD_DURING_DEPLOYMENT"      = "false"
       "BASE_WEBHOOK_URL" = "https://${var.app_name}.azurewebsites.net"
+      BOT_TOKEN            = var.BOT_TOKEN 
+      FORUM_GROUP_ID       = var.FORUM_GROUP_ID
+      DATABASE_URL         = var.DATABASE_URL
+      WEBHOOK_SECRET_TOKEN = var.WEBHOOK_SECRET_TOKEN
+      ENVIRONMENT          = var.ENVIRONMENT
+      WEBSITES_PORT        = var.WEBSITES_PORT
     }
   )
+
 }

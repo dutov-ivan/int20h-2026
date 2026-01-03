@@ -1,0 +1,42 @@
+name: Build customer-service-bot
+
+on:
+  push:
+    paths:
+      - customer-service-bot/**
+      - .github/workflows/build-customer-bot.yml
+  pull_request:
+    paths:
+      - customer-service-bot/**
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  ACR_LOGIN_SERVER: int20hacrprod.azurecr.io
+  IMAGE_NAME: customer-service-bot
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v1
+        with:
+          enable-oidc: true
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: docker/build-push-action@v5
+        with:
+          context: ./customer-service-bot
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - id: meta
+        run: echo "image=${{ env.IMAGE_NAME }}:${{ github.sha }}" >> $GITHUB_OUTPUT
