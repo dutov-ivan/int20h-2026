@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - customer-service-bot/**
+      - infra/1-customer-bot/**
+  workflow_dispatch:
 
 permissions:
   contents: read
