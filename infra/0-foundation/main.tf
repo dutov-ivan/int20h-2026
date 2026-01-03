@@ -1,5 +1,11 @@
 terraform {
   required_version = ">= 1.1.0"
+
+  backend "azurerm" {
+    resource_group_name  = "rg-terraform-state"
+    storage_account_name = "int20htfstate"
+    container_name       = "tfstate"
+  }
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
@@ -33,3 +39,4 @@ resource "azurerm_container_registry" "acr" {
   sku                 = "Basic"
   admin_enabled       = false
 }
+

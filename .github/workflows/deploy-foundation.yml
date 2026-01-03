@@ -1,0 +1,92 @@
+name: Deploy Core Foundation
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'infra/0-foundation/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # Required for Azure OIDC login
+
+env:
+  # Secrets common to both envs
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+jobs:
+  # ------------------------------------------------------------------
+  # JOB 1: APPLY TO STAGING
+  # ------------------------------------------------------------------
+  apply-staging:
+    name: Apply Staging
+    runs-on: ubuntu-latest
+    environment: staging # Uses 'staging' environment secrets/vars
+    
+    defaults:
+      run:
+        working-directory: infra/0-foundation
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+
+      - name: Terraform Init (Staging)
+        run: |
+          terraform init \
+            -backend-config="key=staging.tfstate" \
+            -input=false
+
+      - name: Terraform Apply (Staging)
+        run: |
+          terraform apply -auto-approve \
+            -var-file=staging.tfvars
+
+  # ------------------------------------------------------------------
+  # JOB 2: APPLY TO PROD (Runs only after Staging succeeds)
+  # ------------------------------------------------------------------
+  apply-prod:
+    name: Apply Production
+    needs: apply-staging # Safety chain: Staging must pass first
+    runs-on: ubuntu-latest
+    environment: production # Triggers 'Required Reviewers' gate if configured
+    
+    defaults:
+      run:
+        working-directory: infra/0-foundation
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+
+      - name: Terraform Init (Prod)
+        run: |
+          terraform init \
+            -backend-config="key=foundation.prod.tfstate" \
+            -input=false
+
+      - name: Terraform Apply (Prod)
+        run: |
+          terraform apply -auto-approve \
+            -var-file=prod.tfvars
