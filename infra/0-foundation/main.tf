@@ -24,9 +24,9 @@ resource "azurerm_resource_group" "rg" {
 }
 
 resource "azurerm_service_plan" "plan" {
-  name                = "${var.prefix}-plan"
+  name                = var.service_plan_name
   location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_name = var.resource_group_name
   os_type                = "Linux"
 
   sku_name = var.service_plan_sku_size
@@ -34,16 +34,8 @@ resource "azurerm_service_plan" "plan" {
 
 resource "azurerm_container_registry" "acr" {
   name                = var.acr_name
-  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_name = var.resource_group_name
   location            = azurerm_resource_group.rg.location
   sku                 = "Basic"
   admin_enabled       = false
-}
-
-data "azurerm_client_config" "current" {}
-
-resource "azurerm_role_assignment" "acr_push_terraform_user" {
-  scope                = azurerm_container_registry.acr.id
-  role_definition_name = "AcrPush"
-  principal_id         = data.azurerm_client_config.current.object_id
 }

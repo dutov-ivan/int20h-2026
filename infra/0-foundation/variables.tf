@@ -1,7 +1,6 @@
-variable "prefix" {
+variable "service_plan_name" {
   type        = string
-  description = "Name prefix for resources"
-  default     = "int20h"
+  description = "Name of service plan"
 }
 
 variable "resource_group_name" {
