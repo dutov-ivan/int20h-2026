@@ -45,6 +45,7 @@ jobs:
         run: |
           terraform apply -auto-approve \
             -var="BOT_TOKEN=$BOT_TOKEN" \
+            -var="FORUM_GROUP_ID=$FORUM_GROUP_ID" \
             -var="DATABASE_URL=$DATABASE_URL" \
             -var="WEBHOOK_SECRET_TOKEN=$WEBHOOK_SECRET_TOKEN" \
             -var="ENVIRONMENT=$ENVIRONMENT" \

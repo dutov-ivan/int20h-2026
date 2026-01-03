@@ -2,9 +2,8 @@ name: Build customer-service-bot
 
 on:
   push:
-    paths:
-      - customer-service-bot/**
-      - .github/workflows/build-customer-bot.yml
+    branches:
+      - main
   pull_request:
     paths:
       - customer-service-bot/**
