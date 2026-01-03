@@ -29,6 +29,11 @@ variable "app_settings" {
   default     = {}
 }
 
+variable "bot_always_on" {
+  type = bool
+  description = "Whether the SKU Linux machine running the bot is always on (depends on tier)"
+}
+
 variable "BOT_TOKEN" {
   type        = string
   description = "Bot token for the customer bot"

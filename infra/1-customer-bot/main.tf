@@ -44,6 +44,7 @@ resource "azurerm_linux_web_app" "bot" {
   }
 
   site_config {
+    always_on = var.bot_always_on
     application_stack {
       docker_image_name = "${var.docker_image}"
       docker_registry_url = "https://${data.azurerm_container_registry.acr.login_server}"
