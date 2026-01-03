@@ -1,4 +1,4 @@
-name: Deploy Staging
+name: Deploy Staging customer-service-bot
 
 on:
   workflow_run:
