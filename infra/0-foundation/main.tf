@@ -40,3 +40,10 @@ resource "azurerm_container_registry" "acr" {
   admin_enabled       = false
 }
 
+data "azurerm_client_config" "current" {}
+
+resource "azurerm_role_assignment" "acr_push_terraform_user" {
+  scope                = azurerm_container_registry.acr.id
+  role_definition_name = "AcrPush"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
