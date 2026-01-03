@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 1. Log into Azure (You already have this)
+      # 1. Log into Azure
       - uses: azure/login@v1
         with:
           enable-oidc: true
